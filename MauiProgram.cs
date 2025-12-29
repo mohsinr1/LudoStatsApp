@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using LudoStatsApp.Services;
+using Microsoft.Extensions.Logging;
 
 namespace LudoStatsApp
 {
@@ -15,9 +16,10 @@ namespace LudoStatsApp
                 });
 
             builder.Services.AddMauiBlazorWebView();
+            builder.Services.AddSingleton<GameStorageService>();
 
 #if DEBUG
-    		builder.Services.AddBlazorWebViewDeveloperTools();
+            builder.Services.AddBlazorWebViewDeveloperTools();
     		builder.Logging.AddDebug();
 #endif
 

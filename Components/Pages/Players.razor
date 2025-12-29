@@ -1,0 +1,178 @@
+﻿@page "/players"
+@using LudoStatsApp.Models
+@using LudoStatsApp.Services
+@inject GameStorageService Storage
+
+<h3 style="margin-bottom:20px; color:#2c3e50;">👤 Players Management</h3>
+
+<div class="player-add">
+    <input placeholder="Player name" @bind="newPlayer" class="player-input" />
+    <button @onclick="AddPlayer" class="btn btn-add">Add</button>
+</div>
+
+<ul class="player-list">
+    @foreach (var p in Players1)
+    {
+        <li class="player-item">
+            @if (editPlayer == p)
+            {
+                <input @bind="editName" class="player-input edit-input" />
+                <button @onclick="@(() => UpdatePlayer(p))" class="btn btn-save">Save</button>
+                <button @onclick="@CancelEdit" class="btn btn-cancel">Cancel</button>
+            }
+            else
+            {
+                <span class="player-name">@p.Name</span>
+                <button @onclick="@(() => StartEdit(p))" class="btn btn-edit">Edit</button>
+                <button @onclick="@(() => DeletePlayer(p))" class="btn btn-delete">Delete</button>
+            }
+        </li>
+    }
+</ul>
+
+<style>
+    .player-add {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .player-input {
+        padding: 6px 10px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        width: 200px;
+    }
+
+    .player-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .player-item {
+        padding: 8px 10px;
+        margin-bottom: 8px;
+        background-color: #f7f7f7;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .player-name {
+        flex: 1;
+        font-weight: 500;
+        color: #34495e;
+    }
+
+    .edit-input {
+        flex: 1;
+    }
+
+    .btn {
+        padding: 4px 10px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: background-color 0.2s;
+    }
+
+    .btn-add {
+        background-color: #27ae60;
+        color: white;
+    }
+
+        .btn-add:hover {
+            background-color: #219150;
+        }
+
+    .btn-edit {
+        background-color: #3498db;
+        color: white;
+    }
+
+        .btn-edit:hover {
+            background-color: #2a80b9;
+        }
+
+    .btn-delete {
+        background-color: #e74c3c;
+        color: white;
+    }
+
+        .btn-delete:hover {
+            background-color: #c0392b;
+        }
+
+    .btn-save {
+        background-color: #2ecc71;
+        color: white;
+    }
+
+        .btn-save:hover {
+            background-color: #27ae60;
+        }
+
+    .btn-cancel {
+        background-color: #95a5a6;
+        color: white;
+    }
+
+        .btn-cancel:hover {
+            background-color: #7f8c8d;
+        }
+</style>
+
+@code {
+    List<Player> Players1 = new();
+    string newPlayer = "";
+
+    // Edit state
+    Player? editPlayer = null;
+    string editName = "";
+
+    protected override void OnInitialized()
+    {
+        Players1 = Storage.GetPlayers();
+    }
+
+    void AddPlayer()
+    {
+        if (string.IsNullOrWhiteSpace(newPlayer)) return;
+
+        Players1.Add(new Player { Name = newPlayer });
+        Storage.SavePlayers(Players1);
+        newPlayer = "";
+    }
+
+    void StartEdit(Player player)
+    {
+        editPlayer = player;
+        editName = player.Name;
+    }
+
+    void CancelEdit()
+    {
+        editPlayer = null;
+        editName = "";
+    }
+
+    void UpdatePlayer(Player player)
+    {
+        if (string.IsNullOrWhiteSpace(editName)) return;
+
+        player.Name = editName;
+        Storage.SavePlayers(Players1);
+        CancelEdit();
+    }
+
+    void DeletePlayer(Player player)
+    {
+        Players1.Remove(player);
+        Storage.SavePlayers(Players1);
+    }
+}
