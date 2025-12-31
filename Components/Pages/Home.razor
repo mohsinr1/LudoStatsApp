@@ -3,38 +3,472 @@
 @using LudoStatsApp.Services
 @inject GameStorageService Storage
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <h2 class="title">📊 Ludo Dashboard</h2>
 
-<div class="card">
-    <canvas id="winsChart" height="120"></canvas>
+<div class="header-actions">
+    <button class="btn-add-game" @onclick="NavigateToAddGame">🎲 Add New Game</button>
 </div>
 
 <div class="card">
-    <h3>🎲 Add Game</h3>
+    <h3>📈 Stats</h3>
+    <p><strong>Total Games:</strong> @Games.Count</p>
+</div>
 
-    <label>Players</label>
-    <ul class="player-list">
-        @foreach (var p in Players)
-        {
-            <li>@p.Name</li>
-        }
-    </ul>
+<div class="card">
+    <h3>📊 Player Statistics</h3>
 
-    <label>Winner</label>
-    <select class="input" @bind="SelectedWinner">
-        <option value="">-- Select Winner --</option>
-        @foreach (var p in Players)
-        {
-            <option value="@p.Name">@p.Name</option>
-        }
-    </select>
+    <div class="charts-container">
+        <!-- Player Leaderboard -->
+        <div class="chart-section">
+            <h4>🏆 Player Leaderboard</h4>
+            <div class="leaderboard">
+                @{
+                    // Get all players with their stats
+                    var playersWithStats = new List<LeaderboardPlayer>();
 
-    <br />
-    <button class="btn-save" @onclick="SaveGame">💾 Save Game</button>
+                    foreach (var player in PlayerStatsList)
+                    {
+                        // Calculate points for ranking
+                        // Wins are most important, then positions
+                        var rankingPoints = (player.Wins * 100) +
+                        (player.SecondPlaces * 30) +
+                        (player.ThirdPlaces * 10) -
+                        (player.Losses * 5);
+
+                        playersWithStats.Add(new LeaderboardPlayer
+                        {
+                            Player = player,
+                            RankingPoints = rankingPoints
+                        });
+                    }
+
+                    // Custom ranking logic
+                    var rankedPlayers = playersWithStats
+                    .OrderByDescending(p => p.Player.Wins)  // First by wins
+                    .ThenByDescending(p => p.Player.SecondPlaces) // Then by 2nd places
+                    .ThenByDescending(p => p.Player.ThirdPlaces)  // Then by 3rd places
+                    .ThenByDescending(p => p.Player.WinRate)      // Then by win rate
+                    .ThenByDescending(p => p.RankingPoints)       // Then by total points
+                    .Select(p => p.Player)
+                    .Take(5)
+                    .ToList();
+                }
+
+                @if (rankedPlayers.Count >= 4)
+                {
+                    <!-- 1st Place: Most Wins -->
+                    var firstPlace = rankedPlayers[0];
+                    <div class="leaderboard-item first-place">
+                        <span class="rank rank-1">1</span>
+                        <span class="player-name">@firstPlace.Name</span>
+                        <div class="stats">
+                            <span class="wins" title="Total Wins">🏆 @firstPlace.Wins</span>
+                            <span class="win-rate" title="Win Rate">📈 @firstPlace.WinRate%</span>
+                            <span class="position-stats" title="2nd: @firstPlace.SecondPlaces | 3rd: @firstPlace.ThirdPlaces | 4th: @firstPlace.Losses">
+                                🎯 @firstPlace.SecondPlaces/@firstPlace.ThirdPlaces/@firstPlace.Losses
+                            </span>
+                        </div>
+                        <div class="rank-badge">🏆 WINNER</div>
+                    </div>
+
+                    <!-- 2nd Place: Most 2nd Place Finishes -->
+                    var secondPlace = rankedPlayers
+                    .Where(p => p != firstPlace)
+                    .OrderByDescending(p => p.SecondPlaces)
+                    .ThenByDescending(p => p.Wins)
+                    .FirstOrDefault();
+
+                    @if (secondPlace != null)
+                    {
+                        <div class="leaderboard-item second-place">
+                            <span class="rank rank-2">2</span>
+                            <span class="player-name">@secondPlace.Name</span>
+                            <div class="stats">
+                                <span class="wins" title="Total Wins">🏆 @secondPlace.Wins</span>
+                                <span class="win-rate" title="Win Rate">📈 @secondPlace.WinRate%</span>
+                                <span class="position-stats highlight-second" title="2nd Place Finishes">
+                                    🥈 @secondPlace.SecondPlaces
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- 3rd Place: Most 3rd Place Finishes -->
+                        var thirdPlace = rankedPlayers
+                        .Where(p => p != firstPlace && p != secondPlace)
+                        .OrderByDescending(p => p.ThirdPlaces)
+                        .ThenByDescending(p => p.Wins)
+                        .FirstOrDefault();
+
+                        @if (thirdPlace != null)
+                        {
+                            <div class="leaderboard-item third-place">
+                                <span class="rank rank-3">3</span>
+                                <span class="player-name">@thirdPlace.Name</span>
+                                <div class="stats">
+                                    <span class="wins" title="Total Wins">🏆 @thirdPlace.Wins</span>
+                                    <span class="win-rate" title="Win Rate">📈 @thirdPlace.WinRate%</span>
+                                    <span class="position-stats highlight-third" title="3rd Place Finishes">
+                                        🥉 @thirdPlace.ThirdPlaces
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- 4th Place: Most Losses -->
+                            var fourthPlace = rankedPlayers
+                            .Where(p => p != firstPlace && p != secondPlace && p != thirdPlace)
+                            .OrderByDescending(p => p.Losses)
+                            .ThenBy(p => p.Wins)  // Fewer wins = more likely to be last
+                            .FirstOrDefault();
+
+                            @if (fourthPlace != null)
+                            {
+                                <div class="leaderboard-item fourth-place">
+                                    <span class="rank rank-4">4</span>
+                                    <span class="player-name">@fourthPlace.Name</span>
+                                    <div class="stats">
+                                        <span class="wins" title="Total Wins">🏆 @fourthPlace.Wins</span>
+                                        <span class="win-rate" title="Win Rate">📈 @fourthPlace.WinRate%</span>
+                                        <span class="position-stats highlight-fourth" title="4th Place Finishes">
+                                            📉 @fourthPlace.Losses
+                                        </span>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                }
+                else if (rankedPlayers.Count > 0)
+                {
+                    <!-- Fallback to simple ranking if not enough players -->
+                    @for (int i = 0; i < rankedPlayers.Count; i++)
+                    {
+                        var player = rankedPlayers[i];
+                        <div class="leaderboard-item">
+                            <span class="rank rank-@(i + 1)">@(i + 1)</span>
+                            <span class="player-name">@player.Name</span>
+                            <div class="stats">
+                                <span class="wins">🏆 @player.Wins</span>
+                                <span class="win-rate">📈 @player.WinRate%</span>
+                                <span class="position-stats">
+                                    🎯 @player.SecondPlaces/@player.ThirdPlaces/@player.Losses
+                                </span>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="no-data">No games recorded yet</div>
+                }
+
+                <!-- Show remaining players if any -->
+                @if (rankedPlayers.Count > 4)
+                {
+                    <div class="other-players">
+                        <h5>Other Players</h5>
+                        @foreach (var player in rankedPlayers.Skip(4))
+                        {
+                            <div class="other-player-item">
+                                <span class="player-name">@player.Name</span>
+                                <span class="wins-small">(@player.Wins wins)</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Wins Chart -->
+        <div class="chart-section">
+            <h4>📈 Wins Distribution</h4>
+            <div class="chart-wrapper">
+                <canvas id="winsChart" height="120"></canvas>
+            </div>
+        </div>
+
+        <!-- Win Rate Chart -->
+        <div class="chart-section">
+            <h4>📊 Win Percentage</h4>
+            <div class="chart-wrapper">
+                <canvas id="winRateChart" height="120"></canvas>
+            </div>
+        </div>
+
+        <!-- Positions Pie Chart -->
+        <div class="chart-section">
+            <h4>🎯 Top Player Breakdown</h4>
+            <div class="chart-wrapper">
+                <canvas id="positionsChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>📜 Recent Games</h3>
+    @if (Games.Count > 0)
+    {
+        <table class="game-history">
+            <thead>
+                <tr>
+                    <th>Winner</th>
+                    <th>2nd</th>
+                    <th>3rd</th>
+                    <th>4th</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var game in Games.TakeLast(5).Reverse())
+                {
+                    <tr>
+                        <td class="winner">🏆 @game.Winner</td>
+                        <td>🥈 @game.SecondPlace</td>
+                        <td>🥉 @game.ThirdPlace</td>
+                        <td>📉 @game.Loser</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <div class="no-data">No games recorded yet. Add your first game!</div>
+    }
 </div>
 
 <style>
+    /* Leaderboard specific styles */
+    .leaderboard {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .leaderboard-item {
+        display: flex;
+        align-items: center;
+        padding: 12px 15px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border-left: 4px solid;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .first-place {
+        background: linear-gradient(135deg, #fff9db 0%, white 100%);
+        border-left-color: #FFD700;
+        border: 2px solid #FFD700;
+        animation: glow 2s infinite alternate;
+        position: relative; /* Add this line */
+        overflow: visible; /* Change from hidden to visible */
+    }
+
+    .second-place {
+        background: linear-gradient(135deg, #f8f9fa 0%, white 100%);
+        border-left-color: #C0C0C0;
+    }
+
+    .third-place {
+        background: linear-gradient(135deg, #fff3e6 0%, white 100%);
+        border-left-color: #CD7F32;
+    }
+
+    .fourth-place {
+        background: linear-gradient(135deg, #f8f9fa 0%, white 100%);
+        border-left-color: #6c757d;
+    }
+
+    @@keyframes glow {
+        from {
+            box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+        }
+
+        to {
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+        }
+    }
+
+    .rank {
+        font-weight: bold;
+        font-size: 18px;
+        min-width: 35px;
+        text-align: center;
+        font-family: 'Arial', sans-serif;
+        font-weight: 800;
+    }
+
+    .rank-1 {
+        color: #FFD700;
+        background: linear-gradient(135deg, #FFD700, #FFA500);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .rank-2 {
+        color: #C0C0C0;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .rank-3 {
+        color: #CD7F32;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .rank-4 {
+        color: #6c757d;
+    }
+
+    .player-name {
+        flex: 1;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-left: 10px;
+        font-size: 15px;
+    }
+
+    .first-place .player-name {
+        font-size: 16px;
+        font-weight: 700;
+        color: #2c3e50;
+    }
+
+    .stats {
+        display: flex;
+        gap: 15px;
+        font-size: 13px;
+        align-items: center;
+    }
+
+    .wins {
+        color: #27ae60;
+        font-weight: 600;
+        background: #e8f6ef;
+        padding: 4px 10px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .win-rate {
+        color: #3498db;
+        font-weight: 600;
+        background: #ebf5fb;
+        padding: 4px 10px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .position-stats {
+        color: #6c757d;
+        font-weight: 600;
+        background: #f8f9fa;
+        padding: 4px 10px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+    }
+
+    .highlight-second {
+        color: #C0C0C0;
+        background: #f8f9fa;
+    }
+
+    .highlight-third {
+        color: #CD7F32;
+        background: #fff3e6;
+    }
+
+    .highlight-fourth {
+        color: #e74c3c;
+        background: #fdedec;
+    }
+
+    .rank-badge {
+        position: absolute;
+        top: -10px;
+        right: 10px;
+        background: #FFD700;
+        color: #2c3e50;
+        padding: 2px 10px;
+        border-radius: 0 0 8px 8px;
+        font-size: 10px;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /* Other players section */
+    .other-players {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px dashed #dee2e6;
+    }
+
+        .other-players h5 {
+            margin: 0 0 10px 0;
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+    .other-player-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 10px;
+        margin-bottom: 5px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        font-size: 13px;
+    }
+
+        .other-player-item .player-name {
+            margin-left: 0;
+            font-weight: 500;
+        }
+
+    .wins-small {
+        color: #27ae60;
+        font-size: 12px;
+    }
+
+    /* No data */
+    .no-data {
+        text-align: center;
+        color: #6c757d;
+        padding: 30px 20px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 2px dashed #dee2e6;
+    }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .stats {
+            flex-direction: column;
+            gap: 5px;
+            align-items: flex-start;
+        }
+
+        .leaderboard-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .player-name {
+            margin-left: 0;
+        }
+    }
     /* General page styling */
     .title {
         margin-bottom: 20px;
@@ -45,122 +479,357 @@
 
     /* Card style */
     .card {
-        padding: 15px;
+        padding: 20px;
         margin-bottom: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
         background-color: #fff;
+        border: 1px solid #eaeaea;
     }
 
-    /* Player list styling */
-    .player-list {
-        list-style-type: disc;
-        padding-left: 20px;
-        margin-bottom: 10px;
-    }
-
-        .player-list li {
-            padding: 4px 0;
-            color: #34495e;
-            font-weight: 500;
+        .card h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+            font-weight: 600;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
         }
 
-    /* Winner dropdown styling */
-    .input {
-        width: 220px;
-        padding: 6px 8px;
-        margin-bottom: 10px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        font-size: 14px;
+    /* Header actions */
+    .header-actions {
+        margin-bottom: 20px;
+        text-align: right;
     }
 
-    /* Save button styling */
-    .btn-save {
-        padding: 8px 14px;
-        background-color: #4CAF50;
+    .btn-add-game {
+        padding: 10px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         border: none;
-        border-radius: 4px;
+        border-radius: 8px;
         cursor: pointer;
         font-size: 14px;
-        transition: background-color 0.2s;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 6px rgba(50, 50, 93, 0.11), 0 1px 3px rgba(0, 0, 0, 0.08);
     }
 
-        .btn-save:hover {
-            background-color: #45a049;
+        .btn-add-game:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 14px rgba(50, 50, 93, 0.1), 0 3px 6px rgba(0, 0, 0, 0.08);
         }
 
-    /* Card headings */
-    .card h3 {
-        margin-bottom: 10px;
-        color: #2c3e50;
-        font-weight: 600;
+    /* Charts container */
+    .charts-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 15px;
     }
 
-    label {
-        font-weight: bold;
-        display: block;
-        margin-bottom: 5px;
-        color: #34495e;
+    .chart-section {
+        background: #f8fafc;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        transition: transform 0.2s;
+    }
+
+        .chart-section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .chart-section h4 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-size: 16px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+    .chart-wrapper {
+        height: 150px;
+        position: relative;
+    }
+
+    /* Game history table */
+    .game-history {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+
+        .game-history th {
+            background: #f8f9fa;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #2c3e50;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .game-history td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eaeaea;
+            color: #495057;
+        }
+
+        .game-history tr:hover {
+            background: #f8f9fa;
+        }
+
+        .game-history .winner {
+            color: #27ae60;
+            font-weight: 600;
+        }
+
+    /* No data message */
+    .no-data {
+        text-align: center;
+        color: #6c757d;
+        padding: 40px 20px;
+        font-style: italic;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 2px dashed #dee2e6;
+    }
+
+    /* Responsive design */
+    @@media (max-width: 1200px) {
+        .charts-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .charts-container {
+            grid-template-columns: 1fr;
+        }
+
+        .header-actions {
+            text-align: center;
+        }
+
+        .btn-add-game {
+            width: 100%;
+        }
+
+        .game-history {
+            font-size: 14px;
+        }
+
+            .game-history th,
+            .game-history td {
+                padding: 8px 10px;
+            }
+    }
+
+    @@media (max-width: 480px) {
+        .card {
+            padding: 15px;
+        }
+
+        .stats {
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .leaderboard-item {
+            padding: 10px;
+        }
     }
 </style>
 
 @code {
     List<GameResult> Games = new();
     List<Player> Players = new();
-    string SelectedWinner = "";
+    List<PlayerStats> PlayerStatsList = new();
 
     bool refreshChart = false;
+    bool isLoading = true;
 
     protected override void OnInitialized()
     {
+        LoadData();
+    }
+
+    void LoadData()
+    {
         Players = Storage.GetPlayers();
         Games = Storage.GetGames();
+        PlayerStatsList = CalculatePlayerStats();
+        isLoading = false;
+    }
+
+    List<PlayerStats> CalculatePlayerStats()
+    {
+        var stats = new List<PlayerStats>();
+
+        foreach (var player in Players)
+        {
+            var playerGames = Games.Where(g =>
+                g.Winner == player.Name ||
+                g.SecondPlace == player.Name ||
+                g.ThirdPlace == player.Name ||
+                g.Loser == player.Name).ToList();
+
+            if (playerGames.Count > 0)
+            {
+                var wins = Games.Count(g => g.Winner == player.Name);
+                var secondPlaces = Games.Count(g => g.SecondPlace == player.Name);
+                var thirdPlaces = Games.Count(g => g.ThirdPlace == player.Name);
+                var losses = Games.Count(g => g.Loser == player.Name);
+
+                var winRate = playerGames.Count > 0 ?
+                    (int)Math.Round((double)wins / playerGames.Count * 100) : 0;
+
+                stats.Add(new PlayerStats
+                {
+                    Name = player.Name,
+                    Wins = wins,
+                    SecondPlaces = secondPlaces,
+                    ThirdPlaces = thirdPlaces,
+                    Losses = losses,
+                    TotalGames = playerGames.Count,
+                    WinRate = winRate
+                });
+            }
+        }
+
+        return stats.OrderByDescending(s => s.Wins)
+                    .ThenByDescending(s => s.WinRate)
+                    .ThenBy(s => s.Name)
+                    .ToList();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender || refreshChart)
         {
+            if (!isLoading && PlayerStatsList.Any())
+            {
+                await LoadCharts();
+            }
             refreshChart = false;
-            await LoadChart();
         }
     }
 
-    async Task LoadChart()
+    async Task LoadCharts()
     {
-        var stats = Games
-            .GroupBy(g => g.Winner)
-            .Select(g => new
-            {
-                Player = g.Key,
-                Wins = g.Count()
-            })
-            .ToList();
+        try
+        {
+            // Wins Chart (Bar chart)
+            await JS.InvokeVoidAsync("renderBarChart",
+                "winsChart",
+                "Player Wins",
+                PlayerStatsList.Select(s => s.Name).Take(8).ToArray(),
+                PlayerStatsList.Select(s => s.Wins).Take(8).ToArray(),
+                "#27ae60");
 
-        await JS.InvokeVoidAsync(
-            "renderWinChart",
-            stats.Select(s => s.Player).ToArray(),
-            stats.Select(s => s.Wins).ToArray()
-        );
+            // Win Rate Chart (Line chart)
+            await JS.InvokeVoidAsync("renderLineChart",
+                "winRateChart",
+                "Win Percentage %",
+                PlayerStatsList.Select(s => s.Name).Take(8).ToArray(),
+                PlayerStatsList.Select(s => s.WinRate).Take(8).ToArray(),
+                "#3498db");
+
+            // Positions Pie Chart for top player
+            var topPlayer = PlayerStatsList.FirstOrDefault();
+            if (topPlayer != null && (topPlayer.Wins + topPlayer.SecondPlaces + topPlayer.ThirdPlaces + topPlayer.Losses) > 0)
+            {
+                await JS.InvokeVoidAsync("renderPieChart",
+                    "positionsChart",
+                    new[] { "Wins", "2nd Place", "3rd Place", "4th Place" },
+                    new[] { topPlayer.Wins, topPlayer.SecondPlaces, topPlayer.ThirdPlaces, topPlayer.Losses },
+                    new[] { "#27ae60", "#3498db", "#f39c12", "#e74c3c" });
+            }
+            else
+            {
+                // Show empty chart message
+                await JS.InvokeVoidAsync("renderEmptyChart", "positionsChart", "No data available");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading charts: {ex.Message}");
+        }
     }
 
-    void SaveGame()
+    void NavigateToAddGame()
     {
-        if (string.IsNullOrWhiteSpace(SelectedWinner))
-            return;
+        Navigation.NavigateTo("/add-game");
+    }
 
-        Games.Add(new GameResult
-        {
-            Winner = SelectedWinner
-        });
-
-        Storage.SaveGames(Games);
-
-        SelectedWinner = "";
-
+    // Call this method when you want to refresh the data (e.g., after adding a game)
+    public void RefreshDashboard()
+    {
+        LoadData();
         refreshChart = true;
         StateHasChanged();
+    }
+    // Add this method to calculate specialized rankings
+    public List<PlayerStats> GetCustomRankedPlayers()
+    {
+        var players = PlayerStatsList.ToList();
+
+        if (players.Count < 4)
+            return players.OrderByDescending(p => p.Wins).ToList();
+
+        // Clone the list for manipulation
+        var rankedPlayers = new List<PlayerStats>();
+        var remainingPlayers = players.ToList();
+
+        // 1st: Most wins
+        var firstPlace = remainingPlayers.OrderByDescending(p => p.Wins).First();
+        rankedPlayers.Add(firstPlace);
+        remainingPlayers.Remove(firstPlace);
+
+        // 2nd: Most 2nd place finishes (from remaining players)
+        var secondPlace = remainingPlayers
+            .OrderByDescending(p => p.SecondPlaces)
+            .ThenByDescending(p => p.Wins)
+            .First();
+        rankedPlayers.Add(secondPlace);
+        remainingPlayers.Remove(secondPlace);
+
+        // 3rd: Most 3rd place finishes (from remaining players)
+        var thirdPlace = remainingPlayers
+            .OrderByDescending(p => p.ThirdPlaces)
+            .ThenByDescending(p => p.Wins)
+            .First();
+        rankedPlayers.Add(thirdPlace);
+        remainingPlayers.Remove(thirdPlace);
+
+        // 4th: Most losses (from remaining players)
+        var fourthPlace = remainingPlayers
+            .OrderByDescending(p => p.Losses)
+            .ThenBy(p => p.Wins)
+            .First();
+        rankedPlayers.Add(fourthPlace);
+        remainingPlayers.Remove(fourthPlace);
+
+        // Add remaining players sorted by wins
+        rankedPlayers.AddRange(remainingPlayers.OrderByDescending(p => p.Wins));
+
+        return rankedPlayers;
+    }
+
+    // Add this class if not already defined elsewhere
+    public class PlayerStats
+    {
+        public string Name { get; set; }
+        public int Wins { get; set; }
+        public int SecondPlaces { get; set; }
+        public int ThirdPlaces { get; set; }
+        public int Losses { get; set; }
+        public int TotalGames { get; set; }
+        public int WinRate { get; set; }
+    }
+    public class LeaderboardPlayer
+    {
+        public PlayerStats Player { get; set; }
+        public int RankingPoints { get; set; }
     }
 }

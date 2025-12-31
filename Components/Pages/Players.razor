@@ -2,151 +2,932 @@
 @using LudoStatsApp.Models
 @using LudoStatsApp.Services
 @inject GameStorageService Storage
+@inject NavigationManager Navigation
 
-<h3 style="margin-bottom:20px; color:#2c3e50;">👤 Players Management</h3>
-
-<div class="player-add">
-    <input placeholder="Player name" @bind="newPlayer" class="player-input" />
-    <button @onclick="AddPlayer" class="btn btn-add">Add</button>
+<div class="page-header">
+    <h2 class="title">👥 Players Management</h2>
+    <button class="btn-back" @onclick="NavigateToHome">← Back to Dashboard</button>
 </div>
 
-<ul class="player-list">
-    @foreach (var p in Players1)
-    {
-        <li class="player-item">
-            @if (editPlayer == p)
-            {
-                <input @bind="editName" class="player-input edit-input" />
-                <button @onclick="@(() => UpdatePlayer(p))" class="btn btn-save">Save</button>
-                <button @onclick="@CancelEdit" class="btn btn-cancel">Cancel</button>
-            }
-            else
-            {
-                <span class="player-name">@p.Name</span>
-                <button @onclick="@(() => StartEdit(p))" class="btn btn-edit">Edit</button>
-                <button @onclick="@(() => DeletePlayer(p))" class="btn btn-delete">Delete</button>
-            }
-        </li>
-    }
-</ul>
+<!-- Add Player Card -->
+<div class="card">
+    <h3>➕ Add New Player</h3>
+    <div class="add-player-form">
+        <div class="input-group">
+            <label for="newPlayer">Player Name</label>
+            <input type="text"
+                   id="newPlayer"
+                   placeholder="Enter player name..."
+                   @bind="newPlayer"
+                   class="player-input"
+                   @onkeyup="OnPlayerInputKeyUp" />
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="AddPlayer" :disabled="@(string.IsNullOrWhiteSpace(newPlayer))">
+                <span class="btn-icon">➕</span> Add Player
+            </button>
+            <button class="btn btn-secondary" @onclick="ClearForm">
+                <span class="btn-icon">🗑️</span> Clear
+            </button>
+        </div>
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-error">
+                <span class="alert-icon">⚠️</span>
+                @errorMessage
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Players Statistics -->
+<div class="card">
+    <div class="stats-header">
+        <h3>📊 Players Overview</h3>
+        <span class="total-badge">Total: @PlayersList.Count players</span>
+    </div>
+    <div class="players-stats">
+        <div class="stat-card">
+            <div class="stat-icon">👤</div>
+            <div class="stat-content">
+                <div class="stat-value">@PlayersList.Count</div>
+                <div class="stat-label">Total Players</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🎮</div>
+            <div class="stat-content">
+                <div class="stat-value">@TotalGamesPlayed</div>
+                <div class="stat-label">Played Games</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-content">
+                <div class="stat-value">@TopPlayerWins</div>
+                <div class="stat-label">Most Wins</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Players List -->
+<div class="card">
+    <div class="table-header">
+        <h3>📋 All Players</h3>
+        <div class="search-box">
+            <input type="text"
+                   placeholder="Search players..."
+                   @bind="searchQuery"
+                   @bind:event="oninput"
+                   class="search-input" />
+            <span class="search-icon">🔍</span>
+        </div>
+    </div>
+
+    <div class="table-container">
+        @if (FilteredPlayers.Any())
+        {
+            <table class="players-table">
+                <thead>
+                    <tr>
+                        <th class="player-col">Player</th>
+                        <th class="games-col">Games Played</th>
+                        <th class="wins-col">Wins</th>
+                        <th class="actions-col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var player in FilteredPlayers)
+                    {
+                        var playerStats = GetPlayerStats(player.Name);
+                        <tr>
+                            <td class="player-cell">
+                                <div class="player-info">
+                                    <div class="player-avatar">@player.Name.Substring(0, 1).ToUpper()</div>
+                                    <div class="player-details">
+                                        <div class="player-name">@player.Name</div>
+                                        <div class="player-meta">
+                                            @if (playerStats.TotalGames > 0)
+                                            {
+                                                <span class="meta-item">Win Rate: @playerStats.WinRate%</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="meta-item">No games played</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="games-cell">
+                                <span class="games-count">@playerStats.TotalGames</span>
+                            </td>
+                            <td class="wins-cell">
+                                @if (playerStats.Wins > 0)
+                                {
+                                    <span class="wins-badge">🏆 @playerStats.Wins</span>
+                                }
+                                else
+                                {
+                                    <span class="no-wins">-</span>
+                                }
+                            </td>
+                            <td class="actions-cell">
+                                @if (editPlayer == player)
+                                {
+                                    <div class="edit-form">
+                                        <input type="text"
+                                               @bind="editName"
+                                               class="edit-input"
+                                               @onkeyup="OnEditInputKeyUp" />
+                                        <div class="edit-actions">
+                                            <button class="btn btn-success btn-sm" @onclick="@(() => UpdatePlayer(player))"
+                                                    :disabled="@(string.IsNullOrWhiteSpace(editName) || editName == player.Name)">
+                                                <span class="btn-icon">✓</span> Save
+                                            </button>
+                                            <button class="btn btn-secondary btn-sm" @onclick="CancelEdit">
+                                                <span class="btn-icon">✕</span> Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="action-buttons">
+                                        <button class="btn btn-edit" @onclick="@(() => StartEdit(player))" title="Edit player">
+                                            <span class="btn-icon">✏️</span> Edit
+                                        </button>
+                                        <button class="btn btn-delete" @onclick="@(() => ShowDeleteConfirmation(player))" title="Delete player">
+                                            <span class="btn-icon">🗑️</span> Delete
+                                        </button>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="empty-state">
+                <div class="empty-icon">👤</div>
+                <h4>No players found</h4>
+                <p>@(string.IsNullOrEmpty(searchQuery) ? "Add your first player to get started!" : $"No players match '{searchQuery}'")</p>
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <button class="btn btn-primary" @onclick="ClearSearch">Clear Search</button>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="table-footer">
+        <span class="player-count">Showing @FilteredPlayers.Count of @PlayersList.Count players</span>
+        @if (!string.IsNullOrEmpty(searchQuery))
+        {
+            <button class="btn btn-secondary btn-sm" @onclick="ClearSearch">Clear Search</button>
+        }
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+@if (showDeleteModal)
+{
+    <div class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>🗑️ Delete Player</h3>
+                <button class="modal-close" @onclick="HideDeleteConfirmation">×</button>
+            </div>
+            <div class="modal-content">
+                <p>Are you sure you want to delete <strong>@playerToDelete?.Name</strong>?</p>
+                @if (GetPlayerStats(playerToDelete?.Name ?? "").TotalGames > 0)
+                {
+                    <div class="alert alert-warning">
+                        <span class="alert-icon">⚠️</span>
+                        This player has played in @GetPlayerStats(playerToDelete?.Name ?? "").TotalGames game(s).
+                        Deleting them will remove all their game history.
+                    </div>
+                }
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-danger" @onclick="ConfirmDelete">
+                    <span class="btn-icon">🗑️</span> Delete Player
+                </button>
+                <button class="btn btn-secondary" @onclick="HideDeleteConfirmation">
+                    <span class="btn-icon">✕</span> Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+}
 
 <style>
-    .player-add {
-        margin-bottom: 20px;
+    /* Page Header */
+    .page-header {
         display: flex;
-        gap: 10px;
+        justify-content: space-between;
         align-items: center;
+        margin-bottom: 20px;
     }
+
+    .title {
+        margin: 0;
+        color: #2c3e50;
+        font-weight: 600;
+        font-size: 24px;
+    }
+
+    .btn-back {
+        padding: 8px 16px;
+        background: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+    }
+
+        .btn-back:hover {
+            background: #545b62;
+        }
+
+    /* Card */
+    .card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        border: 1px solid #eaeaea;
+    }
+
+        .card h3 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-weight: 600;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+
+    /* Add Player Form */
+    .add-player-form {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+        .input-group label {
+            font-weight: 600;
+            color: #34495e;
+            font-size: 14px;
+        }
 
     .player-input {
-        padding: 6px 10px;
+        padding: 10px 15px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
         font-size: 14px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        width: 200px;
+        transition: all 0.3s;
     }
 
-    .player-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
+        .player-input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
 
-    .player-item {
-        padding: 8px 10px;
-        margin-bottom: 8px;
-        background-color: #f7f7f7;
-        border-radius: 6px;
+    .form-actions {
         display: flex;
-        align-items: center;
         gap: 10px;
     }
 
-    .player-name {
-        flex: 1;
-        font-weight: 500;
-        color: #34495e;
-    }
-
-    .edit-input {
-        flex: 1;
-    }
-
+    /* Buttons */
     .btn {
-        padding: 4px 10px;
+        padding: 10px 20px;
         border: none;
-        border-radius: 4px;
+        border-radius: 8px;
         cursor: pointer;
-        font-size: 13px;
-        transition: background-color 0.2s;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
 
-    .btn-add {
-        background-color: #27ae60;
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
     }
 
-        .btn-add:hover {
-            background-color: #219150;
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+        }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #545b62;
+        }
+
+    .btn-success {
+        background: #27ae60;
+        color: white;
+    }
+
+        .btn-success:hover:not(:disabled) {
+            background: #229954;
         }
 
     .btn-edit {
-        background-color: #3498db;
+        background: #3498db;
         color: white;
+        padding: 6px 12px;
     }
 
         .btn-edit:hover {
-            background-color: #2a80b9;
+            background: #2980b9;
         }
 
     .btn-delete {
-        background-color: #e74c3c;
+        background: #e74c3c;
         color: white;
+        padding: 6px 12px;
     }
 
         .btn-delete:hover {
-            background-color: #c0392b;
+            background: #c0392b;
         }
 
-    .btn-save {
-        background-color: #2ecc71;
+    .btn-danger {
+        background: #dc3545;
         color: white;
     }
 
-        .btn-save:hover {
-            background-color: #27ae60;
+        .btn-danger:hover {
+            background: #c82333;
         }
 
-    .btn-cancel {
-        background-color: #95a5a6;
-        color: white;
+    .btn-sm {
+        padding: 6px 12px;
+        font-size: 12px;
     }
 
-        .btn-cancel:hover {
-            background-color: #7f8c8d;
+    .btn-icon {
+        font-size: 16px;
+    }
+
+    /* Alerts */
+    .alert {
+        padding: 12px 15px;
+        border-radius: 8px;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .alert-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    .alert-warning {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeaa7;
+    }
+
+    .alert-icon {
+        font-size: 18px;
+    }
+
+    /* Stats Header */
+    .stats-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .total-badge {
+        background: #3498db;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    /* Players Stats */
+    .players-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+    }
+
+    .stat-card {
+        background: #f8fafc;
+        border-radius: 10px;
+        padding: 15px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        transition: transform 0.2s;
+    }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
         }
+
+    .stat-icon {
+        font-size: 24px;
+        background: #3498db;
+        color: white;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .stat-content {
+        flex: 1;
+    }
+
+    .stat-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #2c3e50;
+        line-height: 1;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+    }
+
+    /* Table Header */
+    .table-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .search-box {
+        position: relative;
+        width: 250px;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 10px 15px 10px 40px;
+        border: 2px solid #e2e8f0;
+        border-radius: 25px;
+        font-size: 14px;
+        transition: all 0.3s;
+    }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+    .search-icon {
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6c757d;
+    }
+
+    /* Table */
+    .table-container {
+        overflow-x: auto;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+    }
+
+    .players-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 700px;
+    }
+
+        .players-table th {
+            background: #f8f9fa;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #2c3e50;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .players-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eaeaea;
+            vertical-align: middle;
+        }
+
+        .players-table tr:hover {
+            background: #f8f9fa;
+        }
+
+    /* Player Cell */
+    .player-cell {
+        min-width: 250px;
+    }
+
+    .player-info {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .player-avatar {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+
+    .player-details {
+        flex: 1;
+    }
+
+    .player-name {
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 4px;
+    }
+
+    .player-meta {
+        display: flex;
+        gap: 10px;
+    }
+
+    .meta-item {
+        font-size: 12px;
+        color: #6c757d;
+        background: #f1f3f4;
+        padding: 2px 8px;
+        border-radius: 10px;
+    }
+
+    /* Games & Wins Cells */
+    .games-cell, .wins-cell {
+        text-align: center;
+    }
+
+    .games-count {
+        font-weight: 700;
+        color: #2c3e50;
+        font-size: 18px;
+    }
+
+    .wins-badge {
+        background: #d4edda;
+        color: #155724;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .no-wins {
+        color: #6c757d;
+        font-style: italic;
+    }
+
+    /* Actions Cell */
+    .actions-cell {
+        width: 200px;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .edit-form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .edit-input {
+        padding: 8px 12px;
+        border: 2px solid #3498db;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+
+        .edit-input:focus {
+            outline: none;
+            border-color: #2980b9;
+        }
+
+    .edit-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    /* Table Footer */
+    .table-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .player-count {
+        color: #6c757d;
+        font-size: 14px;
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+    }
+
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+        opacity: 0.5;
+    }
+
+    .empty-state h4 {
+        margin: 0 0 10px 0;
+        color: #2c3e50;
+    }
+
+    .empty-state p {
+        color: #6c757d;
+        margin-bottom: 20px;
+    }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+    }
+
+    .modal {
+        background: white;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 500px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        animation: modalSlideIn 0.3s ease;
+    }
+
+    @@keyframes modalSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #2c3e50;
+        }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #6c757d;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+    }
+
+        .modal-close:hover {
+            background: #f8f9fa;
+            color: #2c3e50;
+        }
+
+    .modal-content {
+        padding: 20px;
+    }
+
+        .modal-content p {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            line-height: 1.5;
+        }
+
+    .modal-actions {
+        padding: 20px;
+        border-top: 1px solid #e9ecef;
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+
+    /* Responsive Design */
+    @@media (max-width: 768px) {
+        .page-header {
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .table-header {
+            flex-direction: column;
+            gap: 15px;
+            align-items: stretch;
+        }
+
+        .search-box {
+            width: 100%;
+        }
+
+        .players-stats {
+            grid-template-columns: 1fr;
+        }
+
+        .form-actions {
+            flex-direction: column;
+        }
+
+        .btn {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .modal-actions {
+            flex-direction: column;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .card {
+            padding: 15px;
+        }
+
+        .player-info {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .player-meta {
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .action-buttons {
+            flex-direction: column;
+        }
+    }
 </style>
 
 @code {
-    List<Player> Players1 = new();
+    List<Player> PlayersList = new();
+    List<GameResult> Games = new();
     string newPlayer = "";
+    string errorMessage = "";
+    string searchQuery = "";
 
     // Edit state
     Player? editPlayer = null;
     string editName = "";
 
+    // Delete modal state
+    bool showDeleteModal = false;
+    Player? playerToDelete = null;
+
     protected override void OnInitialized()
     {
-        Players1 = Storage.GetPlayers();
+        LoadData();
+    }
+
+    void LoadData()
+    {
+        PlayersList = Storage.GetPlayers();
+        Games = Storage.GetGames();
+    }
+
+    List<Player> FilteredPlayers =>
+        string.IsNullOrEmpty(searchQuery)
+            ? PlayersList.OrderBy(p => p.Name).ToList()
+            : PlayersList.Where(p => p.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
+                         .OrderBy(p => p.Name)
+                         .ToList();
+
+    int TotalGamesPlayed => Games.Count;
+    int TopPlayerWins => PlayersList.Max(p => GetPlayerStats(p.Name).Wins);
+
+    (int TotalGames, int Wins, int WinRate) GetPlayerStats(string playerName)
+    {
+        var playerGames = Games.Where(g =>
+            g.Winner == playerName ||
+            g.SecondPlace == playerName ||
+            g.ThirdPlace == playerName ||
+            g.Loser == playerName).ToList();
+
+        var wins = Games.Count(g => g.Winner == playerName);
+        var winRate = playerGames.Count > 0 ? (int)Math.Round((double)wins / playerGames.Count * 100) : 0;
+
+        return (playerGames.Count, wins, winRate);
     }
 
     void AddPlayer()
     {
-        if (string.IsNullOrWhiteSpace(newPlayer)) return;
+        if (string.IsNullOrWhiteSpace(newPlayer))
+        {
+            errorMessage = "Please enter a player name";
+            return;
+        }
 
-        Players1.Add(new Player { Name = newPlayer });
-        Storage.SavePlayers(Players1);
+        if (PlayersList.Any(p => p.Name.Equals(newPlayer, StringComparison.OrdinalIgnoreCase)))
+        {
+            errorMessage = $"Player '{newPlayer}' already exists";
+            return;
+        }
+
+        PlayersList.Add(new Player { Name = newPlayer.Trim() });
+        Storage.SavePlayers(PlayersList);
         newPlayer = "";
+        errorMessage = "";
+    }
+
+    void ClearForm()
+    {
+        newPlayer = "";
+        errorMessage = "";
     }
 
     void StartEdit(Player player)
@@ -163,16 +944,84 @@
 
     void UpdatePlayer(Player player)
     {
-        if (string.IsNullOrWhiteSpace(editName)) return;
+        if (string.IsNullOrWhiteSpace(editName))
+        {
+            errorMessage = "Player name cannot be empty";
+            return;
+        }
 
-        player.Name = editName;
-        Storage.SavePlayers(Players1);
+        if (editName != player.Name && PlayersList.Any(p => p.Name.Equals(editName, StringComparison.OrdinalIgnoreCase)))
+        {
+            errorMessage = $"Player '{editName}' already exists";
+            return;
+        }
+
+        player.Name = editName.Trim();
+        Storage.SavePlayers(PlayersList);
         CancelEdit();
+        errorMessage = "";
     }
 
-    void DeletePlayer(Player player)
+    void ShowDeleteConfirmation(Player player)
     {
-        Players1.Remove(player);
-        Storage.SavePlayers(Players1);
+        playerToDelete = player;
+        showDeleteModal = true;
     }
+
+    void HideDeleteConfirmation()
+    {
+        showDeleteModal = false;
+        playerToDelete = null;
+    }
+
+    void ConfirmDelete()
+    {
+        if (playerToDelete != null)
+        {
+            PlayersList.Remove(playerToDelete);
+            Storage.SavePlayers(PlayersList);
+
+            // Also remove this player from all games
+            var updatedGames = Games.Where(g =>
+                g.Winner != playerToDelete.Name &&
+                g.SecondPlace != playerToDelete.Name &&
+                g.ThirdPlace != playerToDelete.Name &&
+                g.Loser != playerToDelete.Name).ToList();
+
+            Storage.SaveGames(updatedGames);
+            Games = updatedGames;
+        }
+
+        HideDeleteConfirmation();
+    }
+
+    void ClearSearch()
+    {
+        searchQuery = "";
+    }
+
+    void OnPlayerInputKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            AddPlayer();
+        }
+    }
+
+    void OnEditInputKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            if (editPlayer != null)
+            {
+                UpdatePlayer(editPlayer);
+            }
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelEdit();
+        }
+    }
+
+    void NavigateToHome() => Navigation.NavigateTo("/");
 }

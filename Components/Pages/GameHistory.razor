@@ -1,0 +1,903 @@
+﻿@page "/history"
+@using LudoStatsApp.Models
+@using LudoStatsApp.Services
+@inject GameStorageService Storage
+@inject NavigationManager Navigation
+
+<div class="page-header">
+    <h2 class="title">📜 Game History</h2>
+    <button class="btn-back" @onclick="NavigateToHome">← Back to Dashboard</button>
+</div>
+
+<!-- Filter Section -->
+<div class="card filter-section">
+    <h3>🔍 Filter Games</h3>
+    <div class="filter-controls">
+        <div class="filter-group">
+            <label>Filter by Player:</label>
+            <select class="input" @bind="selectedPlayer">
+                <option value="">All Players</option>
+                @foreach (var p in Players)
+                {
+                    <option value="@p.Name">@p.Name</option>
+                }
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label>Results per page:</label>
+            <select class="input" @bind="pageSize">
+                <option value="10">10 games</option>
+                <option value="20">20 games</option>
+                <option value="50">50 games</option>
+                <option value="100">100 games</option>
+            </select>
+        </div>
+        
+        <div class="filter-stats">
+            <span class="stat-badge">📊 Total Games: @Games.Count</span>
+            <span class="stat-badge">👥 Players: @Players.Count</span>
+            @if (!string.IsNullOrEmpty(selectedPlayer))
+            {
+                <span class="stat-badge">👤 Filtered: @FilteredGames.Count games</span>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Player Statistics Cards -->
+<div class="card">
+    <h3>📊 Player Statistics</h3>
+    <div class="player-stats-grid">
+        @foreach (var stat in PlayerStats)
+        {
+            <div class="player-stat-card @(stat.Name == selectedPlayer ? "highlight" : "")" 
+                 @onclick="() => SelectPlayer(stat.Name)">
+                <div class="player-header">
+                    <h4>@stat.Name</h4>
+                    <span class="total-games">🎲 @stat.Games game@(stat.Games != 1 ? "s" : "")</span>
+                </div>
+                
+                <div class="stat-row">
+                    <div class="stat-item">
+                        <span class="stat-icon">🏆</span>
+                        <div class="stat-details">
+                            <div class="stat-value">@stat.Wins</div>
+                            <div class="stat-label">Wins</div>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-icon">🥈</span>
+                        <div class="stat-details">
+                            <div class="stat-value">@stat.Seconds</div>
+                            <div class="stat-label">2nd Place</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="stat-row">
+                    <div class="stat-item">
+                        <span class="stat-icon">🥉</span>
+                        <div class="stat-details">
+                            <div class="stat-value">@stat.Thirds</div>
+                            <div class="stat-label">3rd Place</div>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-icon">❌</span>
+                        <div class="stat-details">
+                            <div class="stat-value">@stat.Losses</div>
+                            <div class="stat-label">Losses</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="progress-section">
+                    <div class="progress-bar">
+                        <div class="progress-win" style="width: @stat.WinPercent%"></div>
+                        <div class="progress-loss" style="width: @stat.LossPercent%"></div>
+                    </div>
+                    <div class="progress-labels">
+                        <span class="win-label">Win: @stat.WinPercent%</span>
+                        <span class="loss-label">Loss: @stat.LossPercent%</span>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Game History Table -->
+<div class="card">
+    <div class="table-header">
+        <h3>🎮 Game History</h3>
+        <div class="pagination-controls">
+            <button class="btn-prev" @onclick="PreviousPage" :disabled="@(currentPage <= 1)">← Previous</button>
+            <span class="page-info">Page @currentPage of @totalPages</span>
+            <button class="btn-next" @onclick="NextPage" :disabled="@(currentPage >= totalPages)">Next →</button>
+        </div>
+    </div>
+    
+    <div class="table-container">
+        <table class="game-history-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th class="winner-col">🏆 Winner</th>
+                    <th class="second-col">🥈 2nd Place</th>
+                    <th class="third-col">🥉 3rd Place</th>
+                    <th class="loser-col">❌ 4th Place</th>
+                    <th class="actions-col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (FilteredGames.Any())
+                {
+                    @foreach (var game in PagedGames)
+                    {
+                        <tr class="@(editGame == game ? "editing" : "")">
+                            @if (editGame == game)
+                            {
+                                <td>
+                                    <input type="date" class="input" @bind="editDate" format-value="yyyy-MM-dd" />
+                                </td>
+                                <td>
+                                    <select class="input" @bind="editWinner">
+                                        @foreach (var p in Players)
+                                        {
+                                            <option value="@p.Name">@p.Name</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="input" @bind="editSecond">
+                                        @foreach (var p in Players)
+                                        {
+                                            <option value="@p.Name">@p.Name</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="input" @bind="editThird">
+                                        @foreach (var p in Players)
+                                        {
+                                            <option value="@p.Name">@p.Name</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="input" @bind="editLoser">
+                                        @foreach (var p in Players)
+                                        {
+                                            <option value="@p.Name">@p.Name</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td class="actions-cell">
+                                    <div class="action-buttons">
+                                        <button class="btn-save" @onclick="SaveEdit" title="Save changes">
+                                            <span class="icon">✓</span> Save
+                                        </button>
+                                        <button class="btn-cancel" @onclick="CancelEdit" title="Cancel edit">
+                                            <span class="icon">✕</span> Cancel
+                                        </button>
+                                    </div>
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="date-cell">
+                                    <span class="date">@game.Date?.ToString("MMM dd, yyyy")</span>
+                                    <span class="time">@game.Date?.ToString("HH:mm")</span>
+                                </td>
+                                <td class="winner-cell">
+                                    <span class="player-badge winner">🏆 @game.Winner</span>
+                                </td>
+                                <td class="second-cell">
+                                    <span class="player-badge second">🥈 @game.SecondPlace</span>
+                                </td>
+                                <td class="third-cell">
+                                    <span class="player-badge third">🥉 @game.ThirdPlace</span>
+                                </td>
+                                <td class="loser-cell">
+                                    <span class="player-badge loser">❌ @game.Loser</span>
+                                </td>
+                                <td class="actions-cell">
+                                    <div class="action-buttons">
+                                        <button class="btn-edit" @onclick="() => StartEdit(game)" title="Edit game">
+                                            <span class="icon">✏️</span> Edit
+                                        </button>
+                                        <button class="btn-delete" @onclick="() => DeleteGame(game)" title="Delete game">
+                                            <span class="icon">🗑️</span> Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="6" class="no-games">
+                            <div class="empty-state">
+                                <div class="empty-icon">📊</div>
+                                <h4>No games found</h4>
+                                <p>@(string.IsNullOrEmpty(selectedPlayer) ? "Add your first game to see history!" : $"No games found for {selectedPlayer}")</p>
+                                <button class="btn-add-game" @onclick="NavigateToAddGame">🎲 Add New Game</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="table-footer">
+        <span class="total-info">Showing @((currentPage - 1) * pageSize + 1)-@Math.Min(currentPage * pageSize, FilteredGames.Count) of @FilteredGames.Count games</span>
+        @if (!string.IsNullOrEmpty(selectedPlayer))
+        {
+            <button class="btn-clear-filter" @onclick="ClearFilter">Clear Filter</button>
+        }
+    </div>
+</div>
+
+<style>
+    /* Page Header */
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .btn-back {
+        padding: 8px 16px;
+        background: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+    }
+
+        .btn-back:hover {
+            background: #545b62;
+        }
+
+    /* Filter Section */
+    .filter-section {
+        margin-bottom: 20px;
+    }
+
+    .filter-controls {
+        display: flex;
+        gap: 20px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .filter-group {
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .filter-stats {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .stat-badge {
+        background: #e9ecef;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 14px;
+        color: #495057;
+    }
+
+    /* Player Statistics Cards */
+    .player-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+    }
+
+    .player-stat-card {
+        background: white;
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 15px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+
+        .player-stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-color: #3498db;
+        }
+
+        .player-stat-card.highlight {
+            border-color: #27ae60;
+            background: linear-gradient(135deg, #f8fff9 0%, #ffffff 100%);
+        }
+
+    .player-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #f1f3f4;
+    }
+
+        .player-header h4 {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+    .total-games {
+        background: #3498db;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .stat-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    .stat-item {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .stat-icon {
+        font-size: 20px;
+    }
+
+    .stat-details {
+        flex: 1;
+    }
+
+    .stat-value {
+        font-weight: 700;
+        font-size: 18px;
+        color: #2c3e50;
+    }
+
+    .stat-label {
+        font-size: 11px;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .progress-section {
+        margin-top: 15px;
+    }
+
+    .progress-bar {
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+    }
+
+    .progress-win {
+        background: #27ae60;
+        height: 100%;
+    }
+
+    .progress-loss {
+        background: #e74c3c;
+        height: 100%;
+    }
+
+    .progress-labels {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 5px;
+        font-size: 12px;
+    }
+
+    .win-label {
+        color: #27ae60;
+        font-weight: 500;
+    }
+
+    .loss-label {
+        color: #e74c3c;
+        font-weight: 500;
+    }
+
+    /* Game History Table */
+    .table-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .btn-prev, .btn-next {
+        padding: 6px 12px;
+        background: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+        .btn-prev:disabled, .btn-next:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-prev:hover:not(:disabled), .btn-next:hover:not(:disabled) {
+            background: #545b62;
+        }
+
+    .page-info {
+        font-size: 14px;
+        color: #6c757d;
+    }
+
+    .table-container {
+        overflow-x: auto;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+    }
+
+    .game-history-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 800px;
+    }
+
+        .game-history-table th {
+            background: #f8f9fa;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #2c3e50;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+        }
+
+        .game-history-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eaeaea;
+            vertical-align: middle;
+        }
+
+        .game-history-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .game-history-table tr.editing {
+            background: #fff9db;
+        }
+
+    .date-cell {
+        white-space: nowrap;
+    }
+
+    .date {
+        display: block;
+        font-weight: 500;
+        color: #2c3e50;
+    }
+
+    .time {
+        display: block;
+        font-size: 12px;
+        color: #6c757d;
+    }
+
+    .player-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: 500;
+        font-size: 14px;
+    }
+
+    .winner {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+
+    .second {
+        background: #e2e3e5;
+        color: #383d41;
+        border: 1px solid #d6d8db;
+    }
+
+    .third {
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeaa7;
+    }
+
+    .loser {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    .actions-cell {
+        width: 180px;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-edit, .btn-delete, .btn-save, .btn-cancel {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        transition: all 0.2s;
+    }
+
+    .btn-edit {
+        background: #3498db;
+        color: white;
+    }
+
+        .btn-edit:hover {
+            background: #2980b9;
+        }
+
+    .btn-delete {
+        background: #e74c3c;
+        color: white;
+    }
+
+        .btn-delete:hover {
+            background: #c0392b;
+        }
+
+    .btn-save {
+        background: #27ae60;
+        color: white;
+    }
+
+        .btn-save:hover {
+            background: #229954;
+        }
+
+    .btn-cancel {
+        background: #95a5a6;
+        color: white;
+    }
+
+        .btn-cancel:hover {
+            background: #7f8c8d;
+        }
+
+    .icon {
+        font-size: 14px;
+    }
+
+    .no-games {
+        text-align: center;
+        padding: 40px 20px;
+    }
+
+    .empty-state {
+        max-width: 300px;
+        margin: 0 auto;
+    }
+
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 15px;
+        opacity: 0.5;
+    }
+
+    .empty-state h4 {
+        margin: 0 0 10px 0;
+        color: #2c3e50;
+    }
+
+    .empty-state p {
+        color: #6c757d;
+        margin-bottom: 20px;
+    }
+
+    .btn-add-game {
+        padding: 10px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+        .btn-add-game:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(50, 50, 93, 0.1);
+        }
+
+    .table-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .total-info {
+        color: #6c757d;
+        font-size: 14px;
+    }
+
+    .btn-clear-filter {
+        padding: 6px 12px;
+        background: #95a5a6;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+        .btn-clear-filter:hover {
+            background: #7f8c8d;
+        }
+
+    .input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    /* Responsive Design */
+    @@media (max-width: 1200px) {
+        .player-stats-grid {
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        }
+    }
+
+    @@media (max-width: 992px) {
+        .page-header {
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .filter-controls {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .filter-group {
+            min-width: 100%;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .player-stats-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .table-header {
+            flex-direction: column;
+            gap: 10px;
+            align-items: stretch;
+        }
+
+        .pagination-controls {
+            justify-content: center;
+        }
+
+        .action-buttons {
+            flex-direction: column;
+        }
+
+        .game-history-table th,
+        .game-history-table td {
+            padding: 8px 10px;
+            font-size: 14px;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .stat-row {
+            flex-direction: column;
+        }
+
+        .player-header {
+            flex-direction: column;
+            gap: 5px;
+            align-items: flex-start;
+        }
+
+        .table-footer {
+            flex-direction: column;
+            gap: 10px;
+            align-items: stretch;
+        }
+    }
+</style>
+
+@code {
+    List<GameResult> Games = new();
+    List<Player> Players = new();
+
+    string selectedPlayer = "";
+    int currentPage = 1;
+    int pageSize = 10;
+
+    GameResult? editGame;
+    string editWinner = "";
+    string editSecond = "";
+    string editThird = "";
+    string editLoser = "";
+    DateTime? editDate;
+
+    protected override void OnInitialized()
+    {
+        LoadData();
+    }
+
+    void LoadData()
+    {
+        Games = Storage.GetGames();
+        Players = Storage.GetPlayers();
+    }
+
+    List<GameResult> FilteredGames =>
+        string.IsNullOrEmpty(selectedPlayer)
+            ? Games.OrderByDescending(g => g.Date ?? DateTime.MinValue).ToList()
+            : Games.Where(g =>
+                g.Winner == selectedPlayer ||
+                g.SecondPlace == selectedPlayer ||
+                g.ThirdPlace == selectedPlayer ||
+                g.Loser == selectedPlayer)
+                  .OrderByDescending(g => g.Date ?? DateTime.MinValue)
+                  .ToList();
+
+    List<GameResult> PagedGames =>
+        FilteredGames.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+
+    int totalPages => (int)Math.Ceiling((double)FilteredGames.Count / pageSize);
+
+    void SelectPlayer(string playerName)
+    {
+        selectedPlayer = selectedPlayer == playerName ? "" : playerName;
+        currentPage = 1; // Reset to first page when filtering
+    }
+
+    void ClearFilter()
+    {
+        selectedPlayer = "";
+        currentPage = 1;
+    }
+
+    void PreviousPage()
+    {
+        if (currentPage > 1) currentPage--;
+    }
+
+    void NextPage()
+    {
+        if (currentPage < totalPages) currentPage++;
+    }
+
+    void DeleteGame(GameResult game)
+    {
+        Games.Remove(game);
+        Storage.SaveGames(Games);
+        currentPage = Math.Min(currentPage, totalPages); // Adjust page if needed
+    }
+
+    void StartEdit(GameResult game)
+    {
+        editGame = game;
+        editWinner = game.Winner;
+        editSecond = game.SecondPlace;
+        editThird = game.ThirdPlace;
+        editLoser = game.Loser;
+        editDate = game.Date;
+    }
+
+    void SaveEdit()
+    {
+        if (editGame != null)
+        {
+            editGame.Winner = editWinner;
+            editGame.SecondPlace = editSecond;
+            editGame.ThirdPlace = editThird;
+            editGame.Loser = editLoser;
+            editGame.Date = editDate;
+
+            Storage.SaveGames(Games);
+            editGame = null;
+        }
+    }
+
+    void CancelEdit() => editGame = null;
+
+    // Player Statistics
+    IEnumerable<PlayerStat> PlayerStats =>
+        Players.Select(p =>
+        {
+            var totalGames = Games.Count(g =>
+                g.Winner == p.Name ||
+                g.SecondPlace == p.Name ||
+                g.ThirdPlace == p.Name ||
+                g.Loser == p.Name);
+
+            var wins = Games.Count(g => g.Winner == p.Name);
+            var seconds = Games.Count(g => g.SecondPlace == p.Name);
+            var thirds = Games.Count(g => g.ThirdPlace == p.Name);
+            var losses = Games.Count(g => g.Loser == p.Name);
+
+            var winPercent = totalGames == 0 ? 0 : Math.Round((double)wins / totalGames * 100, 1);
+            var lossPercent = totalGames == 0 ? 0 : Math.Round((double)losses / totalGames * 100, 1);
+
+            return new PlayerStat
+            {
+                Name = p.Name,
+                Games = totalGames,
+                Wins = wins,
+                Seconds = seconds,
+                Thirds = thirds,
+                Losses = losses,
+                WinPercent = winPercent,
+                LossPercent = lossPercent
+            };
+        }).OrderByDescending(s => s.Games).ToList();
+
+    void NavigateToHome() => Navigation.NavigateTo("/");
+    
+    void NavigateToAddGame() => Navigation.NavigateTo("/add-game");
+
+    // Helper class for player statistics
+    class PlayerStat
+    {
+        public string Name { get; set; } = "";
+        public int Games { get; set; }
+        public int Wins { get; set; }
+        public int Seconds { get; set; }
+        public int Thirds { get; set; }
+        public int Losses { get; set; }
+        public double WinPercent { get; set; }
+        public double LossPercent { get; set; }
+    }
+}
